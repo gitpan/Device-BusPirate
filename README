@@ -1,0 +1,75 @@
+NAME
+    `Device::BusPirate' - interact with a Bus Pirate device
+
+DESCRIPTION
+    This module allows a program to interact with a Bus Pirate hardware
+    electronics debugging device, attached over a USB-emulated serial port.
+    In the following description, the reader is assumed to be generally
+    aware of the device and its capabilities. For more information about the
+    Bus Pirate see:
+
+      http://dangerousprototypes.com/docs/Bus_Pirate
+
+    This module and its various component modules are based on Future,
+    allowing either synchronous or asynchronous communication with the
+    attached hardware device. For simple synchronous situations, the class
+    may be used on its own, and any method that returns a `Future' instance
+    should immediately call the `get' method on that instance to wait for
+    and obtain the eventual result.
+
+     my $mode = $pirate->enter_mode( "SPI" )->get;
+
+CONSTRUCTOR
+  $pirate = Device::BusPirate->new( %args )
+    Returns a new `Device::BusPirate' instance to communicate with the given
+    device. Takes the following named arguments:
+
+    serial => STRING
+        Path to the serial port device node the Bus Pirate is attached to.
+        If not supplied, a default of /dev/ttyUSB0 will be used.
+
+    baud => INT
+        Serial baud rate to communicate at. Normally it should not be
+        necessary to change this from its default of `115200'.
+
+METHODS
+    The following methods documented with a trailing call to `->get' return
+    Future instances.
+
+  $mode = $pirate->enter_mode( $modename )->get
+    Switches the attached device into the given mode, and returns an object
+    to represent that hardware mode to interact with. This will be an
+    instance of a class depending on the given mode name.
+
+    `SPI'
+        The SPI mode. Returns an instance of Device::BusPirate::Mode::SPI.
+
+    Once a mode object has been created, most of the interaction with the
+    device would be done using that mode object, as it will have methods
+    relating to the specifics of that hardware mode. See the classes listed
+    above for more information.
+
+  $pirate->start->get
+    Starts binary IO mode on the Bus Pirate device, enabling the module to
+    actually communicate with it. Normally it is not necessary to call this
+    method explicitly as it will be done by the setup code of the mode
+    object.
+
+  $pirate->stop->get
+    Stops binary IO mode on the Bus Pirate device and returns it to user
+    terminal mode. It may be polite to perform this at the end of a program
+    to return it to a mode that a user can interact with normally on a
+    terminal.
+
+TODO
+    *   More modes - bitbang, I2C, UART, 1-wire, raw-wire
+
+    *   Concept of "chips" - models of attached devices and defined ways to
+        interact with them. Maybe "chip" isn't the best name for e.g. MIDI
+        over UART or PS/2.
+
+    *   PWM, AUX frequency measurement and ADC support.
+
+AUTHOR
+    Paul Evans <leonerd@leonerd.org.uk>
+
