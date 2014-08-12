@@ -3,7 +3,7 @@ package Device::BusPirate;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Carp;
 
@@ -39,7 +39,7 @@ device. For simple synchronous situations, the class may be used on its own,
 and any method that returns a C<Future> instance should immediately call the
 C<get> method on that instance to wait for and obtain the eventual result.
 
- my $mode = $pirate->enter_mode( "SPI" )->get;
+ my $spi = $pirate->enter_mode( "SPI" )->get;
 
 =cut
 
@@ -81,6 +81,8 @@ sub new
 
    $fh->setflag_icanon( 0 );
    $fh->setflag_echo( 0 );
+
+   $fh->blocking( 0 );
 
    return bless {
       fh => $fh,
@@ -135,6 +137,10 @@ class depending on the given mode name.
 
 =over 4
 
+=item C<BB>
+
+The bit-banging mode. Returns an instance of L<Device::BusPirate::Mode::BB>.
+
 =item C<SPI>
 
 The SPI mode. Returns an instance of L<Device::BusPirate::Mode::SPI>.
@@ -188,7 +194,7 @@ sub start
    );
 }
 
-=head2 $pirate->stop->get
+=head2 $pirate->stop
 
 Stops binary IO mode on the F<Bus Pirate> device and returns it to user
 terminal mode. It may be polite to perform this at the end of a program to
@@ -233,23 +239,25 @@ sub await
 
    croak "Cannot await with nothing to do" unless $sleep or $read;
 
-   my $timeout = $sleep ? $sleep->[0] : undef;
-   my $rvec = '';
-   vec( $rvec, $fh->fileno, 1 ) = 1 if $read;
+   my $buf = '';
 
-   if( select( $rvec, undef, undef, $timeout ) ) {
-      my $buf = '';
-      while( length $buf < $read->[0] ) {
+   while( length $buf < $read->[0] ) {
+      my $timeout = $sleep ? $sleep->[0] : undef;
+      my $rvec = '';
+      vec( $rvec, $fh->fileno, 1 ) = 1 if $read;
+
+      if( select( $rvec, undef, undef, $timeout ) ) {
          $fh->sysread( $buf, $read->[0] - length $buf, length $buf );
       }
+      elsif( $sleep ) {
+         undef $bp->{sleep_f};
+         $sleep->[1]->done;
+         return;
+      }
+   }
 
-      shift @{ $bp->{read_f} };
-      $read->[1]->done( $buf );
-   }
-   else {
-      undef $bp->{sleep_f};
-      $sleep->[1]->done;
-   }
+   shift @{ $bp->{read_f} };
+   $read->[1]->done( $buf );
 }
 
 =head1 TODO
@@ -258,7 +266,7 @@ sub await
 
 =item *
 
-More modes - bitbang, I2C, UART, 1-wire, raw-wire
+More modes - I2C, UART, 1-wire, raw-wire
 
 =item *
 

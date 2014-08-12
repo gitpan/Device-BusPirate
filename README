@@ -17,7 +17,7 @@ DESCRIPTION
     should immediately call the `get' method on that instance to wait for
     and obtain the eventual result.
 
-     my $mode = $pirate->enter_mode( "SPI" )->get;
+     my $spi = $pirate->enter_mode( "SPI" )->get;
 
 CONSTRUCTOR
   $pirate = Device::BusPirate->new( %args )
@@ -41,6 +41,10 @@ METHODS
     to represent that hardware mode to interact with. This will be an
     instance of a class depending on the given mode name.
 
+    `BB'
+        The bit-banging mode. Returns an instance of
+        Device::BusPirate::Mode::BB.
+
     `SPI'
         The SPI mode. Returns an instance of Device::BusPirate::Mode::SPI.
 
@@ -55,14 +59,14 @@ METHODS
     method explicitly as it will be done by the setup code of the mode
     object.
 
-  $pirate->stop->get
+  $pirate->stop
     Stops binary IO mode on the Bus Pirate device and returns it to user
     terminal mode. It may be polite to perform this at the end of a program
     to return it to a mode that a user can interact with normally on a
     terminal.
 
 TODO
-    *   More modes - bitbang, I2C, UART, 1-wire, raw-wire
+    *   More modes - I2C, UART, 1-wire, raw-wire
 
     *   Concept of "chips" - models of attached devices and defined ways to
         interact with them. Maybe "chip" isn't the best name for e.g. MIDI

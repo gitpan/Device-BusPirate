@@ -4,9 +4,11 @@ use strict;
 use warnings;
 use base qw( Device::BusPirate::Mode );
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Carp;
+
+use Future::Utils qw( repeat );
 
 use constant MODE => "SPI";
 
@@ -31,7 +33,8 @@ with an SPI-attached chip.
 
 my $EXPECT_ACK = sub {
    my ( $buf ) = @_;
-   $buf eq "\x01" or return Future->fail( "Expected ACK response" );
+   $buf eq "\x01" x length $buf or
+      return Future->fail( "Expected ACK response" );
    return Future->done;
 };
 
@@ -47,12 +50,13 @@ sub start
    my $self = shift;
 
    # Bus Pirate defaults
-   $self->{pin_3v3} = 0;
-   $self->{cpha}    = 0;
-   $self->{cpol}    = 1;
-   $self->{sample}  = 0;
+   $self->{open_drain} = 1;
+   $self->{cpha}       = 0;
+   $self->{cpol}       = 1;
+   $self->{sample}     = 0;
 
    $self->{cs_high} = 0;
+   $self->{speed}   = 0;
 
    $self->{cs}     = 0;
    $self->{power}  = 0;
@@ -67,18 +71,18 @@ sub start
    });
 }
 
-=head2 $mode->configure( %args )->get
+=head2 $spi->configure( %args )->get
 
 Change configuration options. The following options exist; all of which are
 simple true/false booleans.
 
 =over 4
 
-=item pin_3v3
+=item open_drain
 
-If enabled, output pins will be actively driven by 3.3V when high and GND when
-low. When disabled (default) outputs will be of an open-drain type; hi-Z when
-high but driven to GND when low.
+If enabled (default), a "high" output pin will be set as an input; i.e. hi-Z.
+When disabled, a "high" output pin will be driven by 3.3V. A "low" output will
+be driven to GND in either case.
 
 =item cpha
 
@@ -98,7 +102,32 @@ C<chip_select> method.
 
 =back
 
+The following non-boolean options exist:
+
+=over 4
+
+=item speed
+
+A string giving the clock speed to use for SPI. Must be one of the values:
+
+ 30k 125k 250k 1M 2M 2.6M 4M 8M
+
+By default the speed is C<30kHz>.
+
+=back
+
 =cut
+
+my %SPEEDS = (
+   '30k'  => 0,
+   '125k' => 1,
+   '250k' => 2,
+   '1M'   => 3,
+   '2M'   => 4,
+   '2.6M' => 5,
+   '4M'   => 6,
+   '8M'   => 7,
+);
 
 sub configure
 {
@@ -106,22 +135,29 @@ sub configure
    my %args = @_;
 
    defined $args{$_} and $self->{$_} = !!$args{$_}
-      for (qw( pin_3v3 cpha cpol sample cs_high ));
+      for (qw( open_drain cpha cpol sample cs_high ));
+
+   if( defined $args{speed} ) {
+      $self->{speed} = $SPEEDS{$args{speed}} //
+         croak "Unrecognised speed '$args{speed}'";
+   }
 
    $self->pirate->write( chr( 0x80 |
-      ( $self->{pin_3v3} ? 0x08 : 0 ) |
+      ( $self->{open_drain} ? 0 : 0x08 ) | # sense is reversed
       ( $self->{cpha}    ? 0x04 : 0 ) |
       ( $self->{cpol}    ? 0x02 : 0 ) |
       ( $self->{sample}  ? 0x01 : 0 ) )
    );
-   $self->pirate->read( 1 )->then( $EXPECT_ACK );
+   $self->pirate->write( chr( 0x60 | $self->{speed} ) );
+
+   $self->pirate->read( 2 )->then( $EXPECT_ACK );
 }
 
-=head2 $mode->chip_select( $cs )->get
+=head2 $spi->chip_select( $cs )->get
 
 Set the C<CS> output pin level. A false value will pull it to ground. A true
 value will either pull it up to 3.3V or will leave it in a hi-Z state,
-depending on the setting of the C<pin_3v3> configuration.
+depending on the setting of the C<open_drain> configuration.
 
 =cut
 
@@ -134,7 +170,7 @@ sub chip_select
    $self->pirate->read( 1 )->then( $EXPECT_ACK );
 }
 
-=head2 $mode->power( $power )->get
+=head2 $spi->power( $power )->get
 
 Enable or disable the C<VREG> 5V and 3.3V power outputs.
 
@@ -147,10 +183,10 @@ sub power
    $self->_update_peripherals;
 }
 
-=head2 $mode->pullup( $pullup )->get
+=head2 $spi->pullup( $pullup )->get
 
 Enable or disable the IO pin pullup resistors from C<Vpu>. These are connected
-to the C<MISO>, C<SCK>, C<MOSI> and C<CS> pins.
+to the C<MISO>, C<CLK>, C<MOSI> and C<CS> pins.
 
 =cut
 
@@ -161,7 +197,7 @@ sub pullup
    $self->_update_peripherals;
 }
 
-=head2 $mode->aux( $aux )->get
+=head2 $spi->aux( $aux )->get
 
 Set the C<AUX> output pin level.
 
@@ -187,7 +223,7 @@ sub _update_peripherals
    $self->pirate->read( 1 )->then( $EXPECT_ACK );
 }
 
-=head2 $miso_bytes = $mode->writeread( $mosi_bytes )->get
+=head2 $miso_bytes = $spi->writeread( $mosi_bytes )->get
 
 Performs an actual SPI data transfer. Writes bytes of data from C<$mosi_bytes>
 out of the C<MOSI> pin, while capturing bytes of input from the C<MISO> pin,
@@ -202,22 +238,42 @@ sub writeread
    my $self = shift;
    my ( $bytes ) = @_;
 
-   length $bytes <= 16 or croak "Can only writeread up to 16 bytes at once";
+   # "Bulk Transfer" command can only send up to 16 bytes at once.
 
-   my $len_1 = length( $bytes ) - 1;
+   # The Bus Pirate seems to have a bug, where at the lowest (30k) speed, bulk
+   # transfers of more than 6 bytes get stuck and lock up the hardware.
+   my $maxchunk = $self->{speed} == 0 ? 6 : 16;
 
-   $self->pirate->write( chr( 0x10 | $len_1 ) );
-   $self->pirate->write( $bytes );
+   my @chunks = $bytes =~ m/(.{1,$maxchunk})/g;
+   my $ret = "";
 
-   $self->pirate->read( 1 )->then( sub {
-      my ( $buf ) = @_;
-      $buf eq "\x01" or return Future->fail( "Expected ACK response" );
+   repeat {
+      my $bytes = shift;
 
-      $self->pirate->read( length $bytes );
-   });
+      my $len_1 = length( $bytes ) - 1;
+
+      $self->pirate->write( chr( 0x10 | $len_1 ) . $bytes );
+
+      Future->wait_any(
+         $self->pirate->sleep( 0.5 )->then_fail( "Timed out receiving SPI" ),
+
+         $self->pirate->read( 1 )->then( sub {
+            my ( $buf ) = @_;
+            $buf eq "\x01" or return Future->fail( "Expected ACK response" );
+
+            $self->pirate->read( length $bytes )
+               ->then( sub {
+                  $ret .= $_[0];
+                  Future->done
+               });
+         }),
+      )
+   } foreach => \@chunks,
+     while => sub { not shift->failure },
+     otherwise => sub { Future->done( $ret ) };
 }
 
-=head2 $miso_bytes = $mode->writeread_cs( $mosi_bytes )->get
+=head2 $miso_bytes = $spi->writeread_cs( $mosi_bytes )->get
 
 A convenience wrapper around C<writeread> which toggles the C<CS> pin before
 and afterwards. It uses the C<cs_high> configuration setting to determine the
@@ -241,10 +297,6 @@ sub writeread_cs
 =head1 TODO
 
 =over 4
-
-=item *
-
-SPI speed in C<configure>.
 
 =item *
 
