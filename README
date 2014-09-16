@@ -15,9 +15,25 @@ DESCRIPTION
     attached hardware device. For simple synchronous situations, the class
     may be used on its own, and any method that returns a `Future' instance
     should immediately call the `get' method on that instance to wait for
-    and obtain the eventual result.
+    and obtain the eventual result:
 
      my $spi = $pirate->enter_mode( "SPI" )->get;
+
+     $spi->power( 1 )->get;
+     my $input = $spi->writeread_cs( $output )->get;
+
+    A truely-asynchronous program would be built using a subclass that
+    overrides the basic `read' and `sleep' methods for some event loop or
+    similar; these can then be chained using the `then' method:
+
+     my $input = $pirate->enter_mode( "SPI" )
+       ->then( sub {
+          my ( $spi ) = @_;
+
+          $spi->power( 1 )->then( sub {
+             $spi->writeread_cs( $output );
+          });
+       });
 
 CONSTRUCTOR
   $pirate = Device::BusPirate->new( %args )
@@ -53,6 +69,16 @@ METHODS
     relating to the specifics of that hardware mode. See the classes listed
     above for more information.
 
+  $chip = $pirate->mount_chip( $chipname, %opts )->get
+    Constructs a "chip" object; a helper designed to communicate with some
+    particular hardware device (usually a specific chip) attached to the Bus
+    Pirate. This will be a subclass of Device::BusPirate::Chip, and will
+    likely provide various methods specific to the operation of that
+    particular device.
+
+    `$chipname' should match the name declared by the chip module, and other
+    options passed in `%opts' will be passed to its constructor.
+
   $pirate->start->get
     Starts binary IO mode on the Bus Pirate device, enabling the module to
     actually communicate with it. Normally it is not necessary to call this
@@ -68,9 +94,8 @@ METHODS
 TODO
     *   More modes - I2C, UART, 1-wire, raw-wire
 
-    *   Concept of "chips" - models of attached devices and defined ways to
-        interact with them. Maybe "chip" isn't the best name for e.g. MIDI
-        over UART or PS/2.
+    *   Documentation/examples/actual implementations of truely-async
+        subclass.
 
     *   PWM, AUX frequency measurement and ADC support.
 

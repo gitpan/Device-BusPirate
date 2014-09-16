@@ -1,10 +1,15 @@
+#  You may distribute under the terms of either the GNU General Public License
+#  or the Artistic License (the same terms as Perl itself)
+#
+#  (C) Paul Evans, 2014 -- leonerd@leonerd.org.uk
+
 package Device::BusPirate::Mode::SPI;
 
 use strict;
 use warnings;
 use base qw( Device::BusPirate::Mode );
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use Carp;
 
@@ -34,7 +39,7 @@ with an SPI-attached chip.
 my $EXPECT_ACK = sub {
    my ( $buf ) = @_;
    $buf eq "\x01" x length $buf or
-      return Future->fail( "Expected ACK response" );
+      return Future->fail( 1 );
    return Future->done;
 };
 
@@ -51,8 +56,8 @@ sub start
 
    # Bus Pirate defaults
    $self->{open_drain} = 1;
-   $self->{cpha}       = 0;
-   $self->{cpol}       = 1;
+   $self->{cke}        = 0;
+   $self->{ckp}        = 1;
    $self->{sample}     = 0;
 
    $self->{cs_high} = 0;
@@ -84,12 +89,6 @@ If enabled (default), a "high" output pin will be set as an input; i.e. hi-Z.
 When disabled, a "high" output pin will be driven by 3.3V. A "low" output will
 be driven to GND in either case.
 
-=item cpha
-
-=item cpol
-
-The SPI Clock Phase (C<cpha>) and Clock Polarity (C<cpol>) settings.
-
 =item sample
 
 Whether to sample input in the middle of the clock phase or at the end.
@@ -99,6 +98,28 @@ Whether to sample input in the middle of the clock phase or at the end.
 Whether "active" Chip Select should be at high level. Defaults false to be
 active-low. This only affects the C<writeread_cs> method; not the
 C<chip_select> method.
+
+=back
+
+The SPI clock parameters can be specified in any of three forms:
+
+=over 4
+
+=item ckp
+
+=item cke
+
+The SPI Clock Polarity and Clock Edge settings, in F<PIC> style.
+
+=item cpol
+
+=item cpha
+
+The SPI Clock Polarity and Clock Phase settings, in F<AVR> style.
+
+=item mode
+
+The SPI mode number, 0 to 3.
 
 =back
 
@@ -134,8 +155,19 @@ sub configure
    my $self = shift;
    my %args = @_;
 
+   # Convert other forms of specifying SPI modes
+
+   if( defined $args{mode} ) {
+      my $mode = delete $args{mode};
+      $args{ckp} =    $mode & 2;
+      $args{cke} = !( $mode & 1 );
+   }
+
+   defined $args{cpol} and $args{ckp} =  delete $args{cpol};
+   defined $args{cpha} and $args{cke} = !delete $args{cpha};
+
    defined $args{$_} and $self->{$_} = !!$args{$_}
-      for (qw( open_drain cpha cpol sample cs_high ));
+      for (qw( open_drain ckp cke sample cs_high ));
 
    if( defined $args{speed} ) {
       $self->{speed} = $SPEEDS{$args{speed}} //
@@ -144,13 +176,14 @@ sub configure
 
    $self->pirate->write( chr( 0x80 |
       ( $self->{open_drain} ? 0 : 0x08 ) | # sense is reversed
-      ( $self->{cpha}    ? 0x04 : 0 ) |
-      ( $self->{cpol}    ? 0x02 : 0 ) |
+      ( $self->{cke}     ? 0x04 : 0 ) |
+      ( $self->{ckp}     ? 0x02 : 0 ) |
       ( $self->{sample}  ? 0x01 : 0 ) )
    );
    $self->pirate->write( chr( 0x60 | $self->{speed} ) );
 
-   $self->pirate->read( 2 )->then( $EXPECT_ACK );
+   $self->pirate->read( 2 )->then( $EXPECT_ACK )
+      ->else_fail( "Expected ACK response to SPI configure" );
 }
 
 =head2 $spi->chip_select( $cs )->get
@@ -167,7 +200,8 @@ sub chip_select
    $self->{cs} = !!shift;
 
    $self->pirate->write( $self->{cs} ? "\x03" : "\x02" );
-   $self->pirate->read( 1 )->then( $EXPECT_ACK );
+   $self->pirate->read( 1 )->then( $EXPECT_ACK )
+      ->else_fail( "Expected ACK response to SPI chip_select" );
 }
 
 =head2 $spi->power( $power )->get
@@ -220,7 +254,8 @@ sub _update_peripherals
       ( $self->{aux}    ? CONF_AUX    : 0 ) |
       ( $self->{cs}     ? CONF_CS     : 0 ) )
    );
-   $self->pirate->read( 1 )->then( $EXPECT_ACK );
+   $self->pirate->read( 1 )->then( $EXPECT_ACK )
+      ->else_fail( "Expected ACK response to SPI _update_peripherals" );
 }
 
 =head2 $miso_bytes = $spi->writeread( $mosi_bytes )->get
@@ -233,7 +268,7 @@ effect a larger transaction.
 
 =cut
 
-sub writeread
+sub _writeread
 {
    my $self = shift;
    my ( $bytes ) = @_;
@@ -244,7 +279,7 @@ sub writeread
    # transfers of more than 6 bytes get stuck and lock up the hardware.
    my $maxchunk = $self->{speed} == 0 ? 6 : 16;
 
-   my @chunks = $bytes =~ m/(.{1,$maxchunk})/g;
+   my @chunks = $bytes =~ m/(.{1,$maxchunk})/gs;
    my $ret = "";
 
    repeat {
@@ -259,7 +294,7 @@ sub writeread
 
          $self->pirate->read( 1 )->then( sub {
             my ( $buf ) = @_;
-            $buf eq "\x01" or return Future->fail( "Expected ACK response" );
+            $buf eq "\x01" or return Future->fail( "Expected ACK response during SPI writeread" );
 
             $self->pirate->read( length $bytes )
                ->then( sub {
@@ -271,6 +306,16 @@ sub writeread
    } foreach => \@chunks,
      while => sub { not shift->failure },
      otherwise => sub { Future->done( $ret ) };
+}
+
+sub writeread
+{
+   my $self = shift;
+   my ( $bytes ) = @_;
+
+   $self->pirate->_enter_txn( sub {
+      $self->_writeread( $bytes )
+   });
 }
 
 =head2 $miso_bytes = $spi->writeread_cs( $mosi_bytes )->get
@@ -286,11 +331,13 @@ sub writeread_cs
    my $self = shift;
    my ( $bytes ) = @_;
 
-   $self->chip_select( $self->{cs_high} )->then( sub {
-      $self->writeread( $bytes )
-   })->then( sub {
-      my ( $buf ) = @_;
-      $self->chip_select( !$self->{cs_high} )->then_done( $buf );
+   $self->pirate->_enter_txn( sub {
+      $self->chip_select( $self->{cs_high} )->then( sub {
+         $self->_writeread( $bytes )
+      })->then( sub {
+         my ( $buf ) = @_;
+         $self->chip_select( !$self->{cs_high} )->then_done( $buf );
+      });
    });
 }
 

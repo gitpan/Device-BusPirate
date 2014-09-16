@@ -10,6 +10,7 @@ my $build = Module::Build->new(
       'Future::Utils' => 0,
       'IO::Termios' => 0,
       'Module::Pluggable' => 0,
+      'Time::HiRes' => 0,
    },
    build_requires => {
       'Test::More' => '0.88', # done_testing
