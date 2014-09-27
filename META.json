@@ -4,7 +4,7 @@
       "Paul Evans <leonerd@leonerd.org.uk>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4206",
+   "generated_by" : "Module::Build version 0.421",
    "license" : [
       "perl_5"
    ],
@@ -32,23 +32,23 @@
    "provides" : {
       "Device::BusPirate" : {
          "file" : "lib/Device/BusPirate.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       },
       "Device::BusPirate::Chip" : {
          "file" : "lib/Device/BusPirate/Chip.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       },
       "Device::BusPirate::Mode" : {
          "file" : "lib/Device/BusPirate/Mode.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       },
       "Device::BusPirate::Mode::BB" : {
          "file" : "lib/Device/BusPirate/Mode/BB.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       },
       "Device::BusPirate::Mode::SPI" : {
          "file" : "lib/Device/BusPirate/Mode/SPI.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       }
    },
    "release_status" : "stable",
@@ -57,5 +57,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.03"
+   "version" : "0.04"
 }

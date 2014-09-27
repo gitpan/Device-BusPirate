@@ -42,7 +42,8 @@ CONSTRUCTOR
 
     serial => STRING
         Path to the serial port device node the Bus Pirate is attached to.
-        If not supplied, a default of /dev/ttyUSB0 will be used.
+        If not supplied, the `BUS_PIRATE' environment variable is used;
+        falling back on a default of /dev/ttyUSB0.
 
     baud => INT
         Serial baud rate to communicate at. Normally it should not be

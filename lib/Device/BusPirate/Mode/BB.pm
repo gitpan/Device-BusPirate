@@ -9,7 +9,7 @@ use strict;
 use warnings;
 use base qw( Device::BusPirate::Mode );
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use Carp;
 
@@ -27,6 +27,9 @@ use constant {
    CONF_PULLUP => 0x20,
    CONF_POWER  => 0x40,
 };
+
+# Convenience hash
+my %PIN_MASK = map { $_ => __PACKAGE__->${\"MASK_\U$_"} } qw( cs miso clk mosi aux );
 
 =head1 NAME
 
@@ -98,40 +101,76 @@ configuration setting to determine whether high should be hi-Z or 3.3V.
 
 =cut
 
-sub cs   { shift->_output( MASK_CS,   @_ ) }
-sub miso { shift->_output( MASK_MISO, @_ ) }
-sub clk  { shift->_output( MASK_CLK,  @_ ) }
-sub mosi { shift->_output( MASK_MOSI, @_ ) }
-sub aux  { shift->_output( MASK_AUX,  @_ ) }
+sub cs   { shift->_write( 0, cs   => $_[0] ) }
+sub miso { shift->_write( 0, miso => $_[0] ) }
+sub clk  { shift->_write( 0, clk  => $_[0] ) }
+sub mosi { shift->_write( 0, mosi => $_[0] ) }
+sub aux  { shift->_write( 0, aux  => $_[0] ) }
 
-sub _output
+=head2 $bb->write( %pins )->get
+
+Sets the state of multiple output pins at the same time.
+
+=cut
+
+sub _write
 {
    my $self = shift;
-   my ( $mask, $state ) = @_;
+   my ( $want_read, %pins ) = @_;
 
-   if( $state and !$self->{open_drain} ) {
-      $self->{dir_mask} &= ~$mask;
-      $self->{out_mask} |=  $mask;
-   }
-   elsif( $state ) {
-      $self->{dir_mask} |=  $mask;
-   }
-   else {
-      $self->{dir_mask} &= ~$mask;
-      $self->{out_mask} &= ~$mask;
+   my $out = $self->{out_mask};
+   my $dir = $self->{dir_mask};
+
+   foreach my $pin ( keys %PIN_MASK ) {
+      next unless exists $pins{$pin};
+      my $mask = $PIN_MASK{$pin};
+
+      if( $pins{$pin} and !$self->{open_drain} ) {
+         $dir &= ~$mask;
+         $out |=  $mask;
+      }
+      elsif( $pins{$pin} ) {
+         $dir |=  $mask;
+      }
+      else {
+         $dir &= ~$mask;
+         $out &= ~$mask;
+      }
    }
 
-   $self->pirate->write( chr( 0x40 | $self->{dir_mask} ) );
-   $self->pirate->write( chr( 0x80 | $self->{out_mask} ) );
+   my $len = 0;
+   if( $dir != $self->{dir_mask} ) {
+      $self->pirate->write( chr( 0x40 | $dir ) );
+      $len++;
 
-   $self->pirate->read( 2 )->then_done(); # ignore input
+      $self->{dir_mask} = $dir;
+   }
+
+   if( $want_read or $out != $self->{out_mask} ) {
+      $self->pirate->write( chr( 0x80 | $out ) );
+      $len++;
+
+      $self->{out_mask} = $out;
+   }
+
+   return Future->done unless $len;
+
+   my $f = $self->pirate->read( $len );
+   return $f if $want_read;
+   return $f->then_done(); # ignore input
 }
 
-sub read_cs   { shift->_input( MASK_CS,   @_ ) }
-sub read_miso { shift->_input( MASK_MISO, @_ ) }
-sub read_clk  { shift->_input( MASK_CLK,  @_ ) }
-sub read_mosi { shift->_input( MASK_MOSI, @_ ) }
-sub read_aux  { shift->_input( MASK_AUX,  @_ ) }
+sub write
+{
+   my $self = shift;
+   $self->_write( 0, @_ );
+}
+
+sub read_cs   { shift->_input1( MASK_CS,   @_ ) }
+sub read_miso { shift->_input1( MASK_MISO, @_ ) }
+sub read_clk  { shift->_input1( MASK_CLK,  @_ ) }
+sub read_mosi { shift->_input1( MASK_MOSI, @_ ) }
+sub read_aux  { shift->_input1( MASK_AUX,  @_ ) }
 
 =head2 $state = $bb->read_cs->get
 
@@ -147,6 +186,17 @@ Set a pin to input direction and read its current state.
 
 =cut
 
+sub _input1
+{
+   my $self = shift;
+   my ( $mask ) = @_;
+
+   $self->_input( $mask )->then( sub {
+      my ( $buf ) = @_;
+      Future->done( ord( $buf ) & $mask );
+   });
+}
+
 sub _input
 {
    my $self = shift;
@@ -154,9 +204,45 @@ sub _input
 
    $self->{dir_mask} |= $mask;
    $self->pirate->write( chr( 0x40 | $self->{dir_mask} ) );
-   $self->pirate->read( 1 )->then( sub {
+   return $self->pirate->read( 1 );
+}
+
+=head2 $pins = $bbio->read->get
+
+Returns a HASH containing the current state of all the pins currently
+configured as inputs. More efficient than calling multiple C<read_*> methods
+when more than one pin is being read at the same time.
+
+=cut
+
+sub read
+{
+   my $self = shift;
+   $self->writeread();
+}
+
+=head2 $in_pins = $bbio->writeread( %out_pins )->get
+
+Combines the effects of C<write> and C<read> in a single operation; sets the
+output state of any pins in C<%out_pins> then returns the input state of the
+pins currently set as inputs.
+
+=cut
+
+sub writeread
+{
+   my $self = shift;
+   $self->_write( 1, @_ )->then( sub {
       my ( $buf ) = @_;
-      Future->done( ord( $buf ) & $mask );
+      $buf = ord $buf;
+
+      my $pins;
+      foreach my $pin ( keys %PIN_MASK ) {
+         my $mask = $PIN_MASK{$pin};
+         next unless $self->{dir_mask} & $mask;
+         $pins->{$pin} = !!( $buf & $mask );
+      }
+      Future->done( $pins );
    });
 }
 

@@ -5,7 +5,7 @@ author:
 build_requires:
   Test::More: '0.88'
 dynamic_config: 1
-generated_by: 'Module::Build version 0.4206, CPAN::Meta::Converter version 2.142060'
+generated_by: 'Module::Build version 0.421, CPAN::Meta::Converter version 2.142060'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -14,19 +14,19 @@ name: Device-BusPirate
 provides:
   Device::BusPirate:
     file: lib/Device/BusPirate.pm
-    version: '0.03'
+    version: '0.04'
   Device::BusPirate::Chip:
     file: lib/Device/BusPirate/Chip.pm
-    version: '0.03'
+    version: '0.04'
   Device::BusPirate::Mode:
     file: lib/Device/BusPirate/Mode.pm
-    version: '0.03'
+    version: '0.04'
   Device::BusPirate::Mode::BB:
     file: lib/Device/BusPirate/Mode/BB.pm
-    version: '0.03'
+    version: '0.04'
   Device::BusPirate::Mode::SPI:
     file: lib/Device/BusPirate/Mode/SPI.pm
-    version: '0.03'
+    version: '0.04'
 requires:
   Future: '0'
   Future::Utils: '0'
@@ -35,4 +35,4 @@ requires:
   Time::HiRes: '0'
 resources:
   license: http://dev.perl.org/licenses/
-version: '0.03'
+version: '0.04'

@@ -8,7 +8,7 @@ package Device::BusPirate;
 use strict;
 use warnings;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use Carp;
 
@@ -28,6 +28,7 @@ use Module::Pluggable
    sub_name    => "chips";
 my %CHIPMAP = map { $_->CHIP => $_ } __PACKAGE__->chips;
 
+use constant BUS_PIRATE => $ENV{BUS_PIRATE} || "/dev/ttyUSB0";
 use constant PIRATE_DEBUG => $ENV{PIRATE_DEBUG};
 
 =head1 NAME
@@ -87,7 +88,8 @@ device. Takes the following named arguments:
 =item serial => STRING
 
 Path to the serial port device node the Bus Pirate is attached to. If not
-supplied, a default of F</dev/ttyUSB0> will be used.
+supplied, the C<BUS_PIRATE> environment variable is used; falling back on a
+default of F</dev/ttyUSB0>.
 
 =item baud => INT
 
@@ -103,7 +105,7 @@ sub new
    my $class = shift;
    my %args = @_;
 
-   my $serial = $args{serial} || "/dev/ttyUSB0";
+   my $serial = $args{serial} || BUS_PIRATE;
    my $baud   = $args{baud} || 115200;
 
    my $fh = IO::Termios->open( $serial, "$baud,8,n,1" )

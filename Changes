@@ -1,5 +1,11 @@
 Revision history for Device-BusPirate
 
+0.04    2014/09/27 17:03:35
+        [CHANGES]
+         * Added a small Tickit-driven UI for interacting with BBIO mode
+         * Expanded Mode::BB - ability to write/read multiple pins at once
+         * Default the Bus Pirate location from $BUS_PIRATE env. var.
+
 0.03    2014/09/16 17:05:51
         [CHANGES]
          * Defined a model for attaching high-level 'Chip' interface modules
