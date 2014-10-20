@@ -8,7 +8,7 @@ package Device::BusPirate;
 use strict;
 use warnings;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use Carp;
 
@@ -169,18 +169,30 @@ sub sleep
    return $f;
 }
 
-sub _enter_txn
+=head2 @result = $pirate->enter_mutex( $code )->get
+
+Acts as a mutex lock, to ensure only one block of code runs at once. Calls to
+C<enter_mutex> will be queued up; each C<$code> block will only be invoked
+once the C<Future> returned from the previous has completed.
+
+Mode implementations should use this method to guard complete wire-level
+transactions, ensuring that multiple concurrent ones will not collide with
+each other.
+
+=cut
+
+sub enter_mutex
 {
    my $self = shift;
    my ( $code ) = @_;
 
-   my $oldlock = $self->{txn_lock} // $self->_new_future->done( $self );
-   $self->{txn_lock} = my $newlock = $self->_new_future;
+   my $oldm = $self->{mutex} // $self->_new_future->done( $self );
+   $self->{mutex} = my $newm = $self->_new_future;
 
-   $oldlock->then( $code )
+   $oldm->then( $code )
       ->then_with_f( sub {
          my $f = shift;
-         $newlock->done( $self );
+         $newm->done( $self );
          $f
       });
 }
@@ -196,6 +208,10 @@ class depending on the given mode name.
 =item C<BB>
 
 The bit-banging mode. Returns an instance of L<Device::BusPirate::Mode::BB>.
+
+=item C<I2C>
+
+The I2C mode. Returns an instance of L<Device::BusPirate::Mode::I2C>.
 
 =item C<SPI>
 

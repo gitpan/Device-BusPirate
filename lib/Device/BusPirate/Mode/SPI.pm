@@ -9,20 +9,13 @@ use strict;
 use warnings;
 use base qw( Device::BusPirate::Mode );
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use Carp;
 
 use Future::Utils qw( repeat );
 
 use constant MODE => "SPI";
-
-use constant {
-   CONF_CS     => 0x01,
-   CONF_AUX    => 0x02,
-   CONF_PULLUP => 0x04,
-   CONF_POWER  => 0x08,
-};
 
 =head1 NAME
 
@@ -62,11 +55,6 @@ sub start
 
    $self->{cs_high} = 0;
    $self->{speed}   = 0;
-
-   $self->{cs}     = 0;
-   $self->{power}  = 0;
-   $self->{pullup} = 0;
-   $self->{aux}    = 0;
 
    $self->_start_mode_and_await( "\x01", "SPI" )->then( sub {
       $self->pirate->read( 1 )->then( sub {
@@ -204,60 +192,6 @@ sub chip_select
       ->else_fail( "Expected ACK response to SPI chip_select" );
 }
 
-=head2 $spi->power( $power )->get
-
-Enable or disable the C<VREG> 5V and 3.3V power outputs.
-
-=cut
-
-sub power
-{
-   my $self = shift;
-   $self->{power} = !!shift;
-   $self->_update_peripherals;
-}
-
-=head2 $spi->pullup( $pullup )->get
-
-Enable or disable the IO pin pullup resistors from C<Vpu>. These are connected
-to the C<MISO>, C<CLK>, C<MOSI> and C<CS> pins.
-
-=cut
-
-sub pullup
-{
-   my $self = shift;
-   $self->{pullup} = !!shift;
-   $self->_update_peripherals;
-}
-
-=head2 $spi->aux( $aux )->get
-
-Set the C<AUX> output pin level.
-
-=cut
-
-sub aux
-{
-   my $self = shift;
-   $self->{aux} = !!shift;
-   $self->_update_peripherals;
-}
-
-sub _update_peripherals
-{
-   my $self = shift;
-
-   $self->pirate->write( chr( 0x40 |
-      ( $self->{power}  ? CONF_POWER  : 0 ) |
-      ( $self->{pullup} ? CONF_PULLUP : 0 ) |
-      ( $self->{aux}    ? CONF_AUX    : 0 ) |
-      ( $self->{cs}     ? CONF_CS     : 0 ) )
-   );
-   $self->pirate->read( 1 )->then( $EXPECT_ACK )
-      ->else_fail( "Expected ACK response to SPI _update_peripherals" );
-}
-
 =head2 $miso_bytes = $spi->writeread( $mosi_bytes )->get
 
 Performs an actual SPI data transfer. Writes bytes of data from C<$mosi_bytes>
@@ -265,6 +199,8 @@ out of the C<MOSI> pin, while capturing bytes of input from the C<MISO> pin,
 which will be returned as C<$miso_bytes> when the Future completes. This
 method does I<not> toggle the C<CS> pin, so is safe to call multiple times to
 effect a larger transaction.
+
+This is performed atomically using the C<enter_mutex> method.
 
 =cut
 
@@ -313,7 +249,7 @@ sub writeread
    my $self = shift;
    my ( $bytes ) = @_;
 
-   $self->pirate->_enter_txn( sub {
+   $self->pirate->enter_mutex( sub {
       $self->_writeread( $bytes )
    });
 }
@@ -324,6 +260,8 @@ A convenience wrapper around C<writeread> which toggles the C<CS> pin before
 and afterwards. It uses the C<cs_high> configuration setting to determine the
 active sense of the chip select pin.
 
+This is performed atomically using the C<enter_mutex> method.
+
 =cut
 
 sub writeread_cs
@@ -331,7 +269,7 @@ sub writeread_cs
    my $self = shift;
    my ( $bytes ) = @_;
 
-   $self->pirate->_enter_txn( sub {
+   $self->pirate->enter_mutex( sub {
       $self->chip_select( $self->{cs_high} )->then( sub {
          $self->_writeread( $bytes )
       })->then( sub {
@@ -340,19 +278,6 @@ sub writeread_cs
       });
    });
 }
-
-=head1 TODO
-
-=over 4
-
-=item *
-
-Move peripheral methods into L<Device::BusPirate::Mode> so other modes can
-share it.
-
-=back
-
-=cut
 
 =head1 AUTHOR
 

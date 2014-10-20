@@ -53,6 +53,15 @@ METHODS
     The following methods documented with a trailing call to `->get' return
     Future instances.
 
+  @result = $pirate->enter_mutex( $code )->get
+    Acts as a mutex lock, to ensure only one block of code runs at once.
+    Calls to `enter_mutex' will be queued up; each `$code' block will only
+    be invoked once the `Future' returned from the previous has completed.
+
+    Mode implementations should use this method to guard complete wire-level
+    transactions, ensuring that multiple concurrent ones will not collide
+    with each other.
+
   $mode = $pirate->enter_mode( $modename )->get
     Switches the attached device into the given mode, and returns an object
     to represent that hardware mode to interact with. This will be an
@@ -61,6 +70,9 @@ METHODS
     `BB'
         The bit-banging mode. Returns an instance of
         Device::BusPirate::Mode::BB.
+
+    `I2C'
+        The I2C mode. Returns an instance of Device::BusPirate::Mode::I2C.
 
     `SPI'
         The SPI mode. Returns an instance of Device::BusPirate::Mode::SPI.

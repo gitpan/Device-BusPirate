@@ -1,5 +1,12 @@
 Revision history for Device-BusPirate
 
+0.05    2014/10/20 22:04:21
+        [CHANGES]
+         * Support I2C mode
+         * Provide 'enter_mutex' method on main Device::BusPirate object;
+           document its use by the SPI and I2C modes
+         * Migrate power/pullup/aux peripheral methods to common Mode base
+
 0.04    2014/09/27 17:03:35
         [CHANGES]
          * Added a small Tickit-driven UI for interacting with BBIO mode
