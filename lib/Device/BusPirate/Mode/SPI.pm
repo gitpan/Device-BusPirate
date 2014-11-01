@@ -9,7 +9,7 @@ use strict;
 use warnings;
 use base qw( Device::BusPirate::Mode );
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use Carp;
 
@@ -20,6 +20,30 @@ use constant MODE => "SPI";
 =head1 NAME
 
 C<Device::BusPirate::Mode::SPI> - use C<Device::BusPirate> in SPI mode
+
+=head1 SYNOPSIS
+
+Simple output (e.g. driving LEDs on a shift register)
+
+ use Device::BusPirate;
+
+ my $pirate = Device::BusPirate->new;
+ my $spi = $pirate->enter_mode( "SPI" )->get;
+
+ $spi->configure( open_drain => 0 )->get;
+
+ my $count = 0;
+ while(1) {
+    $spi->writeread_cs( chr $count )->get;
+    $count++; $count %= 255;
+ }
+
+Simple input (e.g. reading buttons on a shift register)
+
+ while(1) {
+    my $in = ord $spi->writeread_cs( "\x00" )->get;
+    printf "Read %02x\n", $in;
+ }
 
 =head1 DESCRIPTION
 

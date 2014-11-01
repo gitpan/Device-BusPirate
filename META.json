@@ -32,27 +32,27 @@
    "provides" : {
       "Device::BusPirate" : {
          "file" : "lib/Device/BusPirate.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       },
       "Device::BusPirate::Chip" : {
          "file" : "lib/Device/BusPirate/Chip.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       },
       "Device::BusPirate::Mode" : {
          "file" : "lib/Device/BusPirate/Mode.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       },
       "Device::BusPirate::Mode::BB" : {
          "file" : "lib/Device/BusPirate/Mode/BB.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       },
       "Device::BusPirate::Mode::I2C" : {
          "file" : "lib/Device/BusPirate/Mode/I2C.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       },
       "Device::BusPirate::Mode::SPI" : {
          "file" : "lib/Device/BusPirate/Mode/SPI.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       }
    },
    "release_status" : "stable",
@@ -61,5 +61,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.05"
+   "version" : "0.06"
 }

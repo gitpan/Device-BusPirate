@@ -1,5 +1,16 @@
 Revision history for Device-BusPirate
 
+0.06    2014/11/01 15:29:58
+        [CHANGES]
+         * Document and expose the $pirate->sleep method as user API
+         * Added synopsis documentation to each Mode class
+
+        [BUGFIXES]
+         * Fix for timer cancellation; avoids memory/CPU leak
+         * Fix for sleep-only await with no IO read pending
+         * Don't worry about Chip:: subclasses that don't define a CHIP
+           constant
+
 0.05    2014/10/20 22:04:21
         [CHANGES]
          * Support I2C mode

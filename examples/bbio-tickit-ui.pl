@@ -8,12 +8,9 @@ use Tickit::Widgets qw( GridBox Button Static VBox CheckButton );
 use Device::BusPirate;
 use Getopt::Long;
 
-my $PIRATE = "/dev/ttyUSB0";
-my $BAUD = 115200;
-
 GetOptions(
-   'p|pirate=s' => \$PIRATE,
-   'b|baud=i'   => \$BAUD,
+   'p|pirate=s' => \my $PIRATE,
+   'b|baud=i'   => \my $BAUD,
 ) or exit 1;
 
 my $pirate = Device::BusPirate->new(

@@ -8,7 +8,7 @@ package Device::BusPirate;
 use strict;
 use warnings;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use Carp;
 
@@ -26,7 +26,7 @@ use Module::Pluggable
    search_path => "Device::BusPirate::Chip",
    require     => 1,
    sub_name    => "chips";
-my %CHIPMAP = map { $_->CHIP => $_ } __PACKAGE__->chips;
+my %CHIPMAP = map { $_->can( "CHIP" ) ? ( $_->CHIP => $_ ) : () } __PACKAGE__->chips;
 
 use constant BUS_PIRATE => $ENV{BUS_PIRATE} || "/dev/ttyUSB0";
 use constant PIRATE_DEBUG => $ENV{PIRATE_DEBUG};
@@ -150,7 +150,13 @@ sub read
    return $f;
 }
 
-# For Modes
+=head2 $pirate->sleep( $timeout )->get
+
+Returns a C<Future> that will become ready after the given timeout (in
+seconds), unless it is cancelled first.
+
+=cut
+
 sub sleep
 {
    my $self = shift;
@@ -161,9 +167,9 @@ sub sleep
    croak "Cannot sleep less than existing timeout" if
       $self->{alarms}[0] and $until < $self->{alarms}[0][0];
 
-   my $alarm = push @{ $self->{alarms} }, [ $until, my $f = $self->_new_future ];
+   push @{ $self->{alarms} }, my $alarm = [ $until, my $f = $self->_new_future ];
    $f->on_cancel( sub {
-      $self->{alarms} = [ grep { $_ != $alarm } @{ $self->{alarms} } ]
+      $self->{alarms} = [ grep { $_ != $alarm } @{ $self->{alarms} } ];
    });
 
    return $f;
@@ -345,7 +351,14 @@ sub await
 
    my $buf = '';
 
-   while( length $buf < $read->[0] ) {
+   while(1) {
+      if( $read and length $buf >= $read->[0] ) {
+         printf STDERR "PIRATE << %v02x\n", $buf if Device::BusPirate::PIRATE_DEBUG;
+         shift @{ $bp->{read_f} };
+         $read->[1]->done( substr $buf, 0, $read->[0], "" );
+         return;
+      }
+
       my $timeout = $alarm ? $alarm->[0] - time() : undef;
       my $rvec = '';
       vec( $rvec, $fh->fileno, 1 ) = 1 if $read;
@@ -359,11 +372,6 @@ sub await
          return;
       }
    }
-
-   printf STDERR "PIRATE << %v02x\n", $buf if Device::BusPirate::PIRATE_DEBUG;
-
-   shift @{ $bp->{read_f} };
-   $read->[1]->done( $buf );
 }
 
 =head1 TODO
